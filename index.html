@@ -497,7 +497,10 @@ DATA.forEach(d=>load(d.k));
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 const cnt=(k,sec)=>{const c={done:0,prog:0,late:0,plan:0,unc:0,n:0};DATA.find(d=>d.k===k).tasks.forEach(([id,s])=>{if(sec==null||s===sec){c[S[k][id]]++;c.n++}});return c};
 const allc=()=>{const c={done:0,prog:0,late:0,plan:0,unc:0,n:0};DATA.forEach(d=>{const x=cnt(d.k);KEYS.forEach(k=>c[k]+=x[k]);c.n+=x.n});return c};
-const pc=c=>c.n?Math.round(c.done/c.n*100):0;
+// Балл: бажарилди = 1, тасдиқланмаган = 0.9, қолганлари = 0
+const W={done:1,unc:0.9,prog:0,late:0,plan:0};
+const score=c=>c.n?KEYS.reduce((x,k)=>x+c[k]*W[k],0)/c.n:0;
+const pc=c=>Math.round(score(c)*100);
 const segs=c=>KEYS.map(k=>`<div style="width:${c[k]/c.n*100}%;background:${COL[k]}"></div>`).join('');
 function toast(m){const e=document.getElementById('toast');e.textContent=m;e.style.opacity=1;clearTimeout(e._t);e._t=setTimeout(()=>e.style.opacity=0,1500)}
 function wrap(t,max){const w=t.split(' '),L=[''];w.forEach(x=>{if((L[L.length-1]+' '+x).trim().length>max&&L[L.length-1])L.push(x);else L[L.length-1]=(L[L.length-1]+' '+x).trim()});return L}
@@ -517,7 +520,7 @@ function kpiRow(c,label){
 /* ---------- overview ---------- */
 function renderOverview(){
   const a=allc();
-  let h=`<div class="ph"><div><h2>Трансформация — умумий ҳолат</h2><div class="sub" style="margin-top:3px">8 йўналиш · ${a.n} вазифа · фоиз = бажарилган вазифалар / жами вазифалар</div></div></div>`+kpiRow(a,'бажарилди');
+  let h=`<div class="ph"><div><h2>Трансформация — умумий ҳолат</h2><div class="sub" style="margin-top:3px">8 йўналиш · ${a.n} вазифа · фоиз = (бажарилди × 1 + тасдиқланмаган × 0.9) / жами вазифалар</div></div></div>`+kpiRow(a,'бажарилди');
   const W=1300,H=760,cx=650,cy=380,rx=470,ry=275,CW=230,CH=96;
   let g='',ln='';
   DATA.forEach((d,i)=>{const ang=(-90+i*360/DATA.length)*Math.PI/180, x=cx+rx*Math.cos(ang), y=cy+ry*Math.sin(ang), c=cnt(d.k), p=pc(c);
@@ -572,7 +575,7 @@ function renderDir(k){
         g+=`<g class="t" data-id="${id}"><title>${esc(id+' '+f)} — ${ST[st]}</title><rect x="${px}" y="${ly-17}" width="${PW}" height="34" rx="17" fill="${COLL[st]}" stroke="${COL[st]}" stroke-width="1.6" ${st==='unc'?'stroke-dasharray="5 3"':''}/>
           <circle cx="${px+17}" cy="${ly}" r="9" fill="${COL[st]}"/><text x="${px+17}" y="${ly+4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">${ICON[st]}</text>
           <text x="${px+33}" y="${ly+4.5}" font-size="12.3" fill="#16202B"><tspan font-weight="700">${id}</tspan> ${esc(trunc(sh,38))}</text></g>`;});
-      const nmL=wrap(d.secs[s]||'',19).slice(0,2), p=sc.n?sc.done/sc.n:0;
+      const nmL=wrap(d.secs[s]||'',19).slice(0,2), p=score(sc);
       g+=`<g><rect x="${bx-BW/2}" y="${by-36}" width="${BW}" height="72" rx="12" fill="#fff" stroke="#1F3A5F" stroke-width="2.2"/>
         <text x="${bx}" y="${by-17}" text-anchor="middle" font-size="10.5" fill="#5E6B78" font-weight="600">${s}-ЙЎНАЛИШ · ${sc.done}/${sc.n}</text>`+
         nmL.map((t,i)=>`<text x="${bx}" y="${by+1+i*15}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#16202B">${esc(t)}</text>`).join('')+
