@@ -49,6 +49,18 @@ svg.mm{width:100%;min-width:1180px;display:block;margin-top:10px}
 .tbl .mini div{height:100%}
 .tbl td.n{text-align:right;font-variant-numeric:tabular-nums}
 .tbl tfoot td{font-weight:700;border-top:2px solid var(--line)}
+.wrap{position:relative}
+.auth{position:absolute;top:22px;right:20px;display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--mute)}
+.btn.pri{background:var(--brand);color:#fff;border-color:var(--brand)}.btn.pri:hover{background:#2A4C78}
+.btn:disabled{opacity:.5;cursor:default}
+.dirty{color:var(--late);font-weight:600;font-size:12px}
+#lg{position:fixed;inset:0;background:rgba(22,32,43,.45);display:none;align-items:center;justify-content:center;z-index:10}
+#lg.on{display:flex}
+#lg form{background:#fff;border-radius:12px;padding:22px;width:320px;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+#lg h3{margin:0 0 4px;font-size:17px}
+#lg input{border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:14px Inter,sans-serif}
+#lg .err{color:var(--late);font-size:12.5px;min-height:16px}
+#lg .row{display:flex;gap:8px;justify-content:flex-end}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none}
 </style>
 </head>
@@ -56,10 +68,18 @@ svg.mm{width:100%;min-width:1180px;display:block;margin-top:10px}
 <div class="wrap">
   <h1>MEGA BUILD ТРАНСФОРМАЦИЯСИ — нима қилинди, нима қолди</h1>
   <div class="sub">Mega Build · Трансформация режаси</div>
+  <div class="auth" id="auth"></div>
   <div class="tabs" id="tabs"></div>
   <div class="panel" id="panel"></div>
   <div class="legend" id="legend"></div>
 </div>
+<div id="lg"><form id="lgf" autocomplete="on">
+  <h3>Тизимга кириш</h3>
+  <input name="login" placeholder="Логин" autocomplete="username" required>
+  <input name="password" type="password" placeholder="Парол" autocomplete="current-password" required>
+  <div class="err" id="lgerr"></div>
+  <div class="row"><button type="button" class="btn" id="lgx">Бекор қилиш</button><button class="btn pri" type="submit">Кириш</button></div>
+</form></div>
 <div id="toast"></div>
 <script>
 // =================== ҲОЛАТЛАР (ШУ ЕРНИ ТАҲРИРЛАНГ) ===================
@@ -466,11 +486,12 @@ const ICON={done:'✓',prog:'▶',late:'!',plan:'·',unc:'?'};
 const COL={done:'#2E9E5B',prog:'#2F6FD6',late:'#D64545',plan:'#9AA3AE',unc:'#E0A526'};
 const COLL={done:'#E3F4EA',prog:'#E4EDFB',late:'#FBE7E7',plan:'#EEF0F3',unc:'#FCF3DC'};
 const KEYS=['done','prog','late','unc','plan'];
-const CYCLE=['done','prog','late','plan'];
+const CYCLE=['done','prog','late','unc','plan'];
 const S={}; // S[dir][id]
+let SAVED={}, USER=null; const DIRTY=new Set(); // SAVED — базадаги ҳолатлар, массивдан устун туради
 let cur='umumiy';
 
-function load(k){ const m=Object.fromEntries((HOLATLAR[k]||[]).map(([i,s])=>[String(i),s])); S[k]={};
+function load(k){ const m=Object.assign(Object.fromEntries((HOLATLAR[k]||[]).map(([i,s])=>[String(i),s])), SAVED[k]||{}); S[k]={}; DIRTY.delete(k);
   DATA.find(d=>d.k===k).tasks.forEach(([id])=>S[k][id]=MAP[String(m[id]||'rejada').trim().toLowerCase()]||'plan'); }
 DATA.forEach(d=>load(d.k));
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
@@ -526,8 +547,8 @@ function renderOverview(){
 /* ---------- direction mind map ---------- */
 function renderDir(k){
   const d=DATA.find(x=>x.k===k), c=cnt(k);
-  let h=`<div class="ph"><div><h2>${esc(d.nm)} йўналиши</h2><div class="sub" style="margin-top:3px">${c.n} вазифа · вазифани босинг — ҳолати вақтинча алмашади</div></div>
-    <div class="btns"><button class="btn" id="copy">Массивни нусхалаш</button><button class="btn" id="reset">Массивдаги ҳолатга қайтариш</button></div></div>`+kpiRow(c,'бажарилди');
+  let h=`<div class="ph"><div><h2>${esc(d.nm)} йўналиши</h2><div class="sub" style="margin-top:3px">${c.n} вазифа · ${USER?'вазифани босинг — ҳолати алмашади, кейин «Сақлаш»ни босинг':'таҳрирлаш учун тизимга киринг'}</div></div>
+    <div class="btns">${USER?`${DIRTY.has(k)?'<span class="dirty">● сақланмаган</span>':''}<button class="btn" id="reset" ${DIRTY.has(k)?'':'disabled'}>Бекор қилиш</button><button class="btn pri" id="save" ${DIRTY.has(k)?'':'disabled'}>Сақлаш</button>`:''}</div></div>`+kpiRow(c,'бажарилди');
   const secs=[...new Set(d.tasks.map(t=>t[1]))].sort((a,b)=>a-b);
   const leaves=s=>d.tasks.filter(t=>t[1]===s);
   const total=d.tasks.length; let best=1,bd=1e9,acc=0;
@@ -567,13 +588,9 @@ function renderDir(k){
     <text x="${cx}" y="${cy+38}" text-anchor="middle" fill="#fff" font-size="11" opacity=".85">${c.done} / ${c.n}</text>`;
   h+=`<svg class="mm" viewBox="0 0 ${W} ${H}">${ln}${g}</svg>`;
   document.getElementById('panel').innerHTML=h;
-  document.getElementById('copy').onclick=()=>{
-    let last=null; const out=[`  ${k}: [`];
-    d.tasks.forEach(([id,s,sh])=>{ if(s!==last){last=s;out.push(`    // ${s}. ${d.secs[s]}`)} out.push((`    ['${id}', '${RMAP[S[k][id]]}'],`).padEnd(36)+'// '+sh); });
-    out.push('  ],');
-    navigator.clipboard.writeText(out.join('\n')).then(()=>toast('Массив нусхаланди — HOLATLAR ичидаги «'+k+'» ўрнига қўйинг')).catch(()=>toast('Нусхалаб бўлмади'));
-  };
-  document.getElementById('reset').onclick=()=>{load(k);render();toast('Массивдаги ҳолатлар тикланди')};
+  if(!USER) return;
+  document.getElementById('save').onclick=()=>save(k);
+  document.getElementById('reset').onclick=()=>{load(k);render();toast('Сақланган ҳолатга қайтарилди')};
 }
 
 function render(){ renderTabs(); cur==='umumiy'?renderOverview():renderDir(cur);
@@ -582,10 +599,51 @@ function go(k){ cur=k; try{history.replaceState(null,'','#'+k)}catch(e){} render
 document.addEventListener('click',e=>{
   const tb=e.target.closest('.tab'); if(tb){go(tb.dataset.k);return}
   const dr=e.target.closest('.dir,.rw'); if(dr){go(dr.dataset.k);return}
-  const t=e.target.closest('.t'); if(t&&cur!=='umumiy'){const id=t.dataset.id,s=S[cur][id],i=CYCLE.indexOf(s); S[cur][id]=CYCLE[(i+1)%CYCLE.length]; render(); toast(id+' → '+ST[S[cur][id]]);}
+  const t=e.target.closest('.t'); if(t&&cur!=='umumiy'&&!USER){toast('Таҳрирлаш учун тизимга киринг');return}
+  if(t&&cur!=='umumiy'){DIRTY.add(cur);const id=t.dataset.id,s=S[cur][id],i=CYCLE.indexOf(s); S[cur][id]=CYCLE[(i+1)%CYCLE.length]; render(); toast(id+' → '+ST[S[cur][id]]);}
 });
 const hs=location.hash.slice(1); if(hs==='umumiy'||DATA.some(d=>d.k===hs)) cur=hs;
 render();
+
+/* ---------- база ва логин ---------- */
+async function api(path,opt={}){
+  const r=await fetch(path,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opt});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||('Хато '+r.status));
+  return j;
+}
+function renderAuth(){
+  document.getElementById('auth').innerHTML=USER
+    ?`<span>👤 ${esc(USER)}</span><button class="btn" id="lo">Чиқиш</button>`
+    :`<button class="btn" id="li">Кириш</button>`;
+  const li=document.getElementById('li'), lo=document.getElementById('lo');
+  if(li) li.onclick=()=>{document.getElementById('lgerr').textContent='';document.getElementById('lg').classList.add('on');document.querySelector('#lgf input').focus()};
+  if(lo) lo.onclick=async()=>{
+    if(DIRTY.size&&!confirm('Сақланмаган ўзгаришлар бор. Барибир чиқасизми?'))return;
+    await api('/api/logout',{method:'POST'}).catch(()=>{}); USER=null; DATA.forEach(d=>load(d.k)); renderAuth(); render(); toast('Тизимдан чиқдингиз')};
+}
+async function refresh(){
+  try{ const j=await api('/api/state'); SAVED=j.holatlar||{}; USER=j.user||null;
+    DATA.forEach(d=>{ if(!DIRTY.has(d.k)) load(d.k) }); render(); }
+  catch(e){ console.warn('База:',e.message) }
+  renderAuth();
+}
+async function save(k){
+  const b=document.getElementById('save'); if(b){b.disabled=true;b.textContent='Сақланмоқда…'}
+  const holatlar=Object.fromEntries(Object.entries(S[k]).map(([id,s])=>[id,RMAP[s]]));
+  try{ const j=await api('/api/state',{method:'POST',body:JSON.stringify({dir:k,holatlar})});
+    SAVED[k]=holatlar; DIRTY.delete(k); render(); toast('Сақланди ('+j.ozgardi+' та ўзгариш)') }
+  catch(e){ if(/кириng|kiring/i.test(e.message)){USER=null;renderAuth()} render(); toast('Сақланмади: '+e.message) }
+}
+document.getElementById('lgx').onclick=()=>document.getElementById('lg').classList.remove('on');
+document.getElementById('lgf').onsubmit=async e=>{
+  e.preventDefault(); const f=new FormData(e.target), err=document.getElementById('lgerr'); err.textContent='';
+  try{ const j=await api('/api/login',{method:'POST',body:JSON.stringify({login:f.get('login'),password:f.get('password')})});
+    USER=j.user; e.target.reset(); document.getElementById('lg').classList.remove('on'); renderAuth(); render(); toast('Хуш келибсиз, '+USER) }
+  catch(x){ err.textContent=x.message }
+};
+window.addEventListener('beforeunload',e=>{ if(DIRTY.size){e.preventDefault();e.returnValue=''} });
+refresh();
 </script>
 </body>
 </html>
